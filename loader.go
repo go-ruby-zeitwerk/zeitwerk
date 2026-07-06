@@ -20,6 +20,7 @@ package zeitwerk
 
 import (
 	"path"
+	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -120,6 +121,13 @@ func (l *Loader) EnableReloading() { l.reloadable = true }
 // PushDir returns an *Error, as the gem raises Zeitwerk::Error for a missing
 // root directory.
 func (l *Loader) PushDir(dir, namespace string) error {
+	// Normalize to forward slashes so all internal path logic (segment joining
+	// via path.Join, glob matching via path.Match, path<->constant comparison)
+	// is separator-agnostic. On Windows the caller may pass native backslash
+	// paths (e.g. from t.TempDir() or filepath.Join); os.ReadDir/os.Stat accept
+	// forward slashes there, so normalizing here is safe and makes the scan
+	// behave identically on every OS.
+	dir = filepath.ToSlash(dir)
 	if _, err := l.fs.ReadDir(dir); err != nil {
 		return &Error{Msg: "the root directory " + dir + " does not exist"}
 	}
@@ -134,13 +142,13 @@ func (l *Loader) PushDir(dir, namespace string) error {
 // excluded from the managed tree, mirroring `Zeitwerk::Loader#ignore`. Patterns
 // are matched against absolute paths with path.Match semantics (a pattern with
 // no metacharacters matches that exact path).
-func (l *Loader) Ignore(globs ...string) { l.ignores = append(l.ignores, globs...) }
+func (l *Loader) Ignore(globs ...string) { l.ignores = append(l.ignores, toSlashAll(globs)...) }
 
 // Collapse registers glob patterns of directories that do not represent a
 // namespace: a collapsed directory's children are promoted into its parent
 // namespace, mirroring `Zeitwerk::Loader#collapse`. Matching uses the same
 // path.Match semantics as Ignore.
-func (l *Loader) Collapse(globs ...string) { l.collapses = append(l.collapses, globs...) }
+func (l *Loader) Collapse(globs ...string) { l.collapses = append(l.collapses, toSlashAll(globs)...) }
 
 // OnLoad registers a callback fired when a managed constant is loaded (during
 // EagerLoad here, since this engine has no lazy autoload trigger of its own),
@@ -310,6 +318,7 @@ func (l *Loader) Autoloads() []Autoload { return l.sortedAutoloads() }
 // inverse direction of the map (path -> constant). The boolean is false if the
 // path is not managed.
 func (l *Loader) CpathAt(filePath string) (Autoload, bool) {
+	filePath = filepath.ToSlash(filePath)
 	for _, a := range l.autoloads {
 		if a.Path == filePath {
 			return a, true
@@ -351,6 +360,17 @@ func matchAny(patterns []string, abspath string) bool {
 		}
 	}
 	return false
+}
+
+// toSlashAll returns globs with every element normalized to forward slashes, so
+// ignore/collapse patterns given with native separators match the loader's
+// forward-slash internal paths on every OS.
+func toSlashAll(globs []string) []string {
+	out := make([]string, len(globs))
+	for i, g := range globs {
+		out[i] = filepath.ToSlash(g)
+	}
+	return out
 }
 
 // joinCpath appends cname to the parent constant path, producing "Cname" at the

@@ -389,6 +389,49 @@ func TestSetInflectorAndMatchErrors(t *testing.T) {
 	}
 }
 
+func TestPushDirNativeSeparatorPath(t *testing.T) {
+	// Windows regression: a root (and ignore/collapse globs) given with the OS's
+	// native separator must yield the same constant map as the forward-slash
+	// form. On Windows filepath.FromSlash produces backslash paths — exactly what
+	// t.TempDir()/filepath.Join hand the binding — which previously mis-parsed
+	// because the loader does /-based path logic internally. filepath.ToSlash in
+	// PushDir/Ignore/Collapse/CpathAt normalizes them. On Unix FromSlash is the
+	// identity, so this still passes there while the windows-latest CI lane
+	// actually exercises the backslash path.
+	build := func(root string) *Loader {
+		fs := memFS{dirs: map[string][]DirEntry{
+			"app/pkg":       {d("admin"), f("user.rb"), f("skip.rb")},
+			"app/pkg/admin": {f("dashboard.rb")},
+		}}
+		l := NewLoader()
+		l.SetFS(fs)
+		if err := l.PushDir(root, ""); err != nil {
+			t.Fatal(err)
+		}
+		l.Ignore(filepath.FromSlash("app/pkg/skip.rb"))
+		if err := l.Setup(); err != nil {
+			t.Fatal(err)
+		}
+		return l
+	}
+
+	slash := cpaths(build("app/pkg"))
+	native := cpaths(build(filepath.FromSlash("app/pkg")))
+	if !reflect.DeepEqual(native, slash) {
+		t.Fatalf("native-separator root gave %v, want %v (same as /-form)", native, slash)
+	}
+	want := []string{"Admin", "Admin::Dashboard", "User"}
+	if !reflect.DeepEqual(slash, want) {
+		t.Fatalf("cpaths = %v, want %v", slash, want)
+	}
+
+	// The path->constant lookup must also resolve a native-separator path.
+	l := build(filepath.FromSlash("app/pkg"))
+	if a, ok := l.CpathAt(filepath.FromSlash("app/pkg/admin")); !ok || a.Cpath != "Admin" {
+		t.Fatalf("CpathAt(native admin dir) = %+v ok=%v", a, ok)
+	}
+}
+
 // asError reports whether err is a *Error, storing it into target.
 func asError(err error, target **Error) bool {
 	e, ok := err.(*Error)
