@@ -84,7 +84,7 @@ func TestSetupMapOnTempTree(t *testing.T) {
 	}
 
 	// Both directions of the map resolve.
-	if a, ok := l.PathAt("Admin::UsersController"); !ok || a.Path != filepath.Join(root, "admin", "users_controller.rb") {
+	if a, ok := l.PathAt("Admin::UsersController"); !ok || a.Path != filepath.ToSlash(filepath.Join(root, "admin", "users_controller.rb")) {
 		t.Fatalf("PathAt(Admin::UsersController) = %+v ok=%v", a, ok)
 	}
 	if a, ok := l.CpathAt(filepath.Join(root, "admin")); !ok || a.Cpath != "Admin" || !a.IsDir {
