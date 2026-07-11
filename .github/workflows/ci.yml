@@ -31,7 +31,7 @@ jobs:
       - if: runner.os != 'Windows'
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version: "3.4"
+          ruby-version: "3.4.10"
       - if: runner.os != 'Windows'
         name: Install the zeitwerk gem for the MRI oracle
         run: gem install zeitwerk
